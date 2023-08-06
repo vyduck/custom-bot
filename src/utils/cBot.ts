@@ -1,26 +1,29 @@
-import { BaseInteraction, Client, CommandInteraction, SlashCommandBuilder } from "discord.js";
-import { cEvent } from "../events/cEvent.template";
-import { cCommand } from "../commands/cCommand.template";
+import { BaseInteraction, Client, Message } from "discord.js";
 import path from "path";
 import fs from "fs";
+
+import { cEvent } from "../events/cEvent.template";
+import { cCommand, intextCommand, isIntext, isPrefix, prefixCommand } from "../commands/cCommand.template";
 import { registerCommands } from "./registerCommands";
 
 interface Config {
     token: string;
     prefix: string;
     clientId: string;
+    database_url: string;
 }
 
 export interface cBot {
     config: Config;
     client: Client;
-    commandList: cCommand[];
-    triggers: Map<string, cCommand>;
+    commandList: Map<string, cCommand | intextCommand | prefixCommand>;
+    commands: Map<string, prefixCommand>;
+    intext: Map<string, intextCommand>;
 }
 
 
-export function createBot(config: Config) {
-    // Init bot
+export async function createBot(config: Config) {
+    // Init bot ========
     let bot: cBot = {
         config: config,
         client: new Client({
@@ -30,13 +33,18 @@ export function createBot(config: Config) {
                 "MessageContent"
             ],
             failIfNotExists: false,
+            allowedMentions: {
+                repliedUser: false
+            }
         }),
-        triggers: new Map(),
-        commandList: []
+        commands: new Map(),
+        commandList: new Map(),
+        intext: new Map()
     };
 
-    // Add event listeners
-    console.log("Adding event listeners...")
+    // Add event listeners ========
+    console.time("events");
+    console.log("Adding event listeners...");
     const EventFolder = fs.readdirSync(path.resolve(__dirname, "../events")).filter(filename => filename.endsWith(".js") && !filename.endsWith(".template.js"));
     for (let eventFile of EventFolder) {
         const event: cEvent = require("../events/" + eventFile).default;
@@ -47,53 +55,66 @@ export function createBot(config: Config) {
         };
     }
     console.log("Done.")
+    console.timeEnd("events");
 
-    // Add commands
-    console.log("Adding command handlers...")
+    // Add commands ========
+    console.time("commands");
+    console.log("Adding command handlers...");
     const CommandFolder = fs.readdirSync(path.resolve(__dirname, "../commands")).filter(filename => filename.endsWith(".js") && !filename.endsWith(".template.js"));
     const commandsRegistering: any[] = [];
+
+    // Load Commands
     for (let commandFile of CommandFolder) {
         const command: cCommand = require("../commands/" + commandFile).default;
-        for (let trigger of command.triggers) {
-            bot.triggers.set(trigger, command);
-        };
-        bot.commandList.push(command);
-        if (command.type == "common" || command.type == "slash") {
-            commandsRegistering.push(command.data?.toJSON());
+        bot.commandList.set(command.name, command);
+        
+        if (isIntext(command)) {
+            for (let trigger of command.triggers) {
+                bot.intext.set(trigger, command);
+            };
+        } else if (isPrefix(command)) {
+            for (let alias of command.aliases) {
+                bot.commands.set(alias, command);
+            };
+            commandsRegistering.push(command.data.toJSON());
         }
     };
-    if (commandsRegistering.length > 0) {
-        registerCommands(commandsRegistering, bot);
+    if (commandsRegistering.length > 0) { // Register slash commands with Discord
+        await registerCommands(commandsRegistering, bot);
     };
 
-    bot.client.on("messageCreate", (message) => {
+    // Add actual command handling event listeners
+    bot.client.on("messageCreate", async (message: Message) => {
         if (message.author.bot) return;
-        if (message.content.startsWith(bot.config.prefix)) {
+        if (message.content.startsWith(bot.config.prefix)) { // Check for prefix commands
             const commandArgs = message.content.split(" ");
             const commandName = commandArgs.shift()?.slice(1);
-            const command = bot.triggers.get(commandName as string);
+            const command = bot.commands.get(commandName as string);
             if (command?.type == "common") {
                 command.exec(message, bot);
             };
-        } else {
-            for (let trigger of bot.triggers.keys()) {
+        } else { // Check for in-text commands
+            for (let trigger of bot.intext.keys()) {
                 if (message.content.toLowerCase().includes(trigger)) {
-                    bot.triggers.get(trigger)?.exec(message);
+                    bot.intext.get(trigger)?.exec(message, bot);
                 };
             };
         }
+        return;
     });
 
-    bot.client.on("interactionCreate", (interaction: BaseInteraction) => {
+    bot.client.on("interactionCreate", async (interaction: BaseInteraction) => {
         if (interaction.isChatInputCommand()) {
-            bot.triggers.get(interaction.commandName)?.exec(interaction, bot);
+            bot.commands.get(interaction.commandName)?.exec(interaction, bot);
         };
+        return;
     });
-    
-    console.log("Done.")
 
-    // Login to discord    
-    bot.client.login(bot.config.token);
+    console.log("Done.");
+    console.timeEnd("commands");
+
+    // Login to discord ========
+    await bot.client.login(bot.config.token);
 
     return bot;
 }

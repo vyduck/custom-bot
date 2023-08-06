@@ -1,17 +1,15 @@
 import { Message, SlashCommandBuilder } from "discord.js";
-import { cCommand } from "./cCommand.template";
+import { intextCommand } from "./cCommand.template";
 
-const hello: cCommand = {
+const hello: intextCommand = {
     name: "hello",
+    description: "Greets people back if they are greeting.",
     triggers: ["hello", "hi"],
-    type: "common",
+    type: "in-text",
     exec: (message: Message) => {
         message.channel.send("Hello there.");
         return;
-    },
-    data: new SlashCommandBuilder()
-        .setName("hello")
-        .setDescription("Replies with hello.")
+    }
 }
 
 export default hello;
