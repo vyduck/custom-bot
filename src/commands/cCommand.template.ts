@@ -1,4 +1,5 @@
 import { SlashCommandBuilder } from "discord.js";
+import { cooldownManager } from "../utils/cooldown";
 
 export interface cCommand {
     name: string;
@@ -14,11 +15,12 @@ export interface prefixCommand extends cCommand {
     "common";
     aliases: string[];
     data: SlashCommandBuilder;
+    cooldown?: cooldownManager;
 }
 
 export interface intextCommand extends cCommand {
     type: "in-text";
-    triggers: string[];
+    triggers: RegExp[];
 }
 
 export function isIntext(command: cCommand): command is intextCommand {

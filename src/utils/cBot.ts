@@ -10,7 +10,6 @@ interface Config {
     token: string;
     prefix: string;
     clientId: string;
-    database_url: string;
 }
 
 export interface cBot {
@@ -18,7 +17,7 @@ export interface cBot {
     client: Client;
     commandList: Map<string, cCommand | intextCommand | prefixCommand>;
     commands: Map<string, prefixCommand>;
-    intext: Map<string, intextCommand>;
+    intext: Map<RegExp, intextCommand>;
 }
 
 
@@ -91,21 +90,43 @@ export async function createBot(config: Config) {
             const commandName = commandArgs.shift()?.slice(1);
             const command = bot.commands.get(commandName as string);
             if (command?.type == "common") {
-                command.exec(message, bot);
+                if (command.cooldown?.tick(message.author.id)) {
+                    command.exec(message, bot);
+                    return;
+                } else {
+                    message.reply("This command is on cooldown. Wait before trying again.")
+                    return;
+                }
             };
         } else { // Check for in-text commands
+            let commandsExeced = new Set();
             for (let trigger of bot.intext.keys()) {
-                if (message.content.toLowerCase().includes(trigger)) {
-                    bot.intext.get(trigger)?.exec(message, bot);
+                if (message.content.toLowerCase().search(trigger) + 1) {
+                    let command = bot.intext.get(trigger);
+                    if (commandsExeced.has(command?.name)) {
+                        bot.intext.get(trigger)?.exec(message, bot);
+                        commandsExeced.add(command?.name);
+                    }
                 };
             };
+            return;
         }
         return;
     });
 
     bot.client.on("interactionCreate", async (interaction: BaseInteraction) => {
         if (interaction.isChatInputCommand()) {
-            bot.commands.get(interaction.commandName)?.exec(interaction, bot);
+            let command = bot.commands.get(interaction.commandName);
+            if (command?.cooldown?.tick(interaction.user.id)) {
+                command?.exec(interaction, bot);
+                return;
+            } else {
+                interaction.reply({
+                    ephemeral: true,
+                    content: "This command is on cooldown. Wait before trying again."
+                });
+                return;
+            }
         };
         return;
     });
