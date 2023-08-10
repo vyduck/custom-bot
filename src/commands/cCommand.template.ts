@@ -15,7 +15,7 @@ export interface prefixCommand extends cCommand {
     "common";
     aliases: string[];
     data: SlashCommandBuilder;
-    cooldown?: cooldownManager;
+    cooldown: cooldownManager;
 }
 
 export interface intextCommand extends cCommand {

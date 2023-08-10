@@ -103,7 +103,7 @@ export async function createBot(config: Config) {
             for (let trigger of bot.intext.keys()) {
                 if (message.content.toLowerCase().search(trigger) + 1) {
                     let command = bot.intext.get(trigger);
-                    if (commandsExeced.has(command?.name)) {
+                    if (!commandsExeced.has(command?.name)) {
                         bot.intext.get(trigger)?.exec(message, bot);
                         commandsExeced.add(command?.name);
                     }
